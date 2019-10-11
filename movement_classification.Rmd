@@ -1,0 +1,125 @@
+---
+title: "Classification of human activity using Machine Learning"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+The training data for this project are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+## Loading required packages
+
+```{r}
+library(caret)
+library(rpart)
+library(ggplot2)
+library(corrplot)
+library(randomForest)
+library(rattle)
+set.seed(2600)
+```
+
+## Loading training and test data
+
+```{r}
+#removing X variable from the dataset (first column)
+x_training_data <- read.csv("pml-training.csv")[, -1]
+dim(x_training_data)
+
+x_test_data <- read.csv("pml-testing.csv")[, -1]
+dim(x_test_data)
+```
+
+##Preprocessing
+
+```{r}
+#removing features with many missing or NA values
+NZV <- nearZeroVar(x_training_data)
+final_training_data <- x_training_data[, -NZV]
+final_test_data <- x_test_data[, -NZV]
+
+NaVals <- sapply(final_training_data, function(x) mean(is.na(x))) > 0.9
+final_training_data <- final_training_data[, NaVals == "FALSE"]
+final_test_data <- final_test_data[, NaVals == "FALSE"]
+```
+
+Removing unnecessary columns that does not contribute to prediction such as raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, num_window and username.
+```{r}
+final_training_data <- final_training_data[, -c(1:5)]
+final_test_data <- final_test_data [, -c(1:5)]
+head(final_training_data)
+```
+
+## Partitioning Data for cross validation
+
+```{r}
+#preparing data partition for cross validation
+toTrain <- createDataPartition(y = final_training_data$classe, p=0.7, list= FALSE)
+training <- final_training_data[toTrain, ]
+validation_Set <- final_training_data[-toTrain, ]
+```
+
+## Training using decision trees
+```{r}
+#training the model with decision trees
+model_dtree <- train(classe~., data = training, method = "rpart")
+predict_training_tree <- predict(model_dtree, training)
+CM <- confusionMatrix(predict_training_tree, training$classe)
+
+predict_CV_tree <- predict(model_dtree, validation_Set)
+CM_cv_tree <- confusionMatrix(predict_CV_tree, validation_Set$classe)
+
+print(CM_cv_tree)
+#we see that decision tree model gives accuracy of about 49%.
+```
+We observe that using decision trees we get accuracy of about 49%. To improve the accuracy we use Random forests.
+
+## Training using Random forests
+```{r}
+#training the model with random forest
+training.rf <- randomForest(classe~.,data=training, importance=TRUE)
+
+print(training.rf)
+
+confusionMatrix(predict(training.rf, newdata = validation_Set[,-ncol(validation_Set)]), validation_Set$classe)
+
+accuracy <-c(as.numeric(predict(training.rf,newdata=validation_Set[,-ncol(validation_Set)])==validation_Set$classe))
+accuracy <-sum(accuracy)*100/nrow(validation_Set)
+
+
+```
+
+We observe that we are getting an accuracy of 99.6%. Hence random forests is the most appropriate model for classification of this data set.
+
+## Prediction
+Using the trained model of random forests to predict on test dataset.
+
+```{r}
+#predicting on test_set
+predict_test_set <- predict(training.rf, final_test_data)
+predict_test_set
+```
+
+## Checking the importance of features
+We will check which feature helped the most in deducing our prediction.
+
+```{r}
+#keeping all important features for prediction
+varImpPlot(training.rf, scale = TRUE, sort=TRUE)
+
+```
+
+
